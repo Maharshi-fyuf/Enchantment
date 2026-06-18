@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cyber-green: #00FF00;
+  --color-neutral-900: #171717;
+  --color-neutral-800: #262626;
+  --color-neutral-700: #404040;
+}
+
+@layer base {
+  body {
+    @apply bg-neutral-900 text-white m-0;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+/* Parallax Utilities */
+.parallax-wrapper {
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  perspective: 10px;
+}
+
+.parallax-layer-base {
+  transform: translateZ(0);
+}
+
+.parallax-layer-back {
+  transform: translateZ(-10px) scale(2);
+  z-index: -1;
+}
