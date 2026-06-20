@@ -2,15 +2,22 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-cyber-green: #00FF00;
-  --color-neutral-900: #171717;
-  --color-neutral-800: #262626;
-  --color-neutral-700: #404040;
+  --color-bg: #0a0a0a;
+  --color-surface: #141414;
+  --color-glass: rgba(255,255,255,0.04);
+  --color-glass-border: rgba(255,255,255,0.08);
+  --color-accent: #00ff88;
+  --color-accent-muted: rgba(0,255,136,0.12);
+  --color-push: #ff6b6b;
+  --color-pull: #4dabf7;
+  --color-legs: #ffd43b;
+  --color-text: #fafafa;
+  --color-text-muted: #8a8a8a;
 }
 
 @layer base {
   body {
-    @apply bg-neutral-900 text-white m-0;
+    @apply bg-[var(--color-bg)] text-[var(--color-text)] m-0;
     font-family: 'Inter', system-ui, sans-serif;
   }
 }
