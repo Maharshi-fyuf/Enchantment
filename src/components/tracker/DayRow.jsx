@@ -1,29 +1,7 @@
-/**
- * DayRow.jsx
- * ─────────────────────────────────────────────────────────────────────
- * Accordion row for a single study day.
- *
- * Collapsed: shows day number, pillar badge, title, time split, checkbox.
- * Expanded:  reveals theory brief, lab brief, and a platform link.
- *
- * The "mark complete" checkbox is separate from the expand toggle —
- * a user can mark a day done without reading the details, and vice versa.
- */
-
 import React, { useRef, useEffect, useState } from 'react';
 import { motion, useAnimation } from 'framer-motion';
 import { PILLAR_CONFIG } from '../../data/studyPlan';
 
-/**
- * @param {object}   props
- * @param {object}   props.day          full day object from STUDY_DAYS
- * @param {boolean}  props.isExpanded   whether the accordion body is open
- * @param {boolean}  props.isCompleted  whether the day is marked done
- * @param {function} props.onToggle     () => void — open/close accordion
- * @param {function} props.onComplete   () => void — toggle completion
- * @param {boolean}  props.shouldScroll scroll into view on mount if true
- * @param {function} props.onLogSession (min) => void — log study time
- */
 export default function DayRow({
   day,
   isExpanded,
@@ -38,7 +16,6 @@ export default function DayRow({
   const controls = useAnimation();
   const [showPicker, setShowPicker] = useState(false);
 
-  // Scroll into view when jumping from the timeline
   useEffect(() => {
     if (shouldScroll && rowRef.current) {
       rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -48,7 +25,6 @@ export default function DayRow({
   const handleToggleComplete = () => {
     if (!isCompleted) {
       setShowPicker(true);
-      // Auto-skip if no interaction within 5 seconds
       setTimeout(() => {
         setShowPicker((prev) => {
           if (prev) {
@@ -72,17 +48,14 @@ export default function DayRow({
   };
 
   const handleDragEnd = (event, info) => {
-    // If dragged right past 80px, toggle complete
     if (info.offset.x > 80) {
       handleToggleComplete();
     }
-    // Snap back to original position
     controls.start({ x: 0, transition: { type: 'spring', stiffness: 300, damping: 20 } });
   };
 
   return (
     <div className="relative">
-      {/* Swipe background hint */}
       <div className="absolute inset-0 flex items-center px-4 rounded-lg bg-cyber-green/20">
         <span className="text-xs font-mono font-bold tracking-wider text-cyber-green">
           {isCompleted ? 'MARK INCOMPLETE' : 'MARK COMPLETE'}
@@ -106,7 +79,6 @@ export default function DayRow({
           isExpanded ? 'shadow-lg' : '',
         ].join(' ')}
       >
-        {/* ── Collapsed header (always visible) ────────────────────────── */}
         <div className="flex items-center gap-2 px-3 py-2.5 min-h-[44px]">
           {showPicker ? (
             <div className="flex w-full items-center justify-between animate-in fade-in zoom-in duration-200">
@@ -139,10 +111,9 @@ export default function DayRow({
             </div>
           ) : (
             <>
-              {/* Completion checkbox */}
               <button
                 onClick={(e) => {
-                  e.stopPropagation(); // don't expand/collapse when checking
+                  e.stopPropagation();
                   handleToggleComplete();
                 }}
                 aria-label={`Mark Day ${day.day} ${isCompleted ? 'incomplete' : 'complete'}`}
@@ -155,48 +126,33 @@ export default function DayRow({
               >
                 {isCompleted && (
                   <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                    <path
-                      d="M2 6l3 3 5-5"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
+                    <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
               </button>
 
-              {/* Day number */}
               <span className="w-8 flex-shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">
                 {String(day.day).padStart(2, '0')}
               </span>
 
-              {/* Pillar badge */}
-              <span
-                className={`hidden flex-shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-medium sm:inline-block ${cfg.badge}`}
-              >
+              <span className={`hidden flex-shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-medium sm:inline-block ${cfg.badge}`}>
                 {cfg.label.toUpperCase()}
               </span>
 
-              {/* Title — clickable to expand/collapse */}
               <button
                 onClick={onToggle}
                 className={[
                   'flex-1 text-left text-[13px] font-medium leading-tight focus:outline-none',
-                  isCompleted
-                    ? 'text-gray-400 line-through dark:text-gray-500'
-                    : 'text-gray-800 dark:text-gray-100',
+                  isCompleted ? 'text-gray-400 line-through dark:text-gray-500' : 'text-gray-800 dark:text-gray-100',
                 ].join(' ')}
               >
                 {day.title}
               </button>
 
-              {/* Time split */}
               <span className="hidden flex-shrink-0 font-mono text-[10px] text-gray-400 sm:block dark:text-gray-500">
                 1hr + 1hr
               </span>
 
-              {/* Chevron toggle */}
               <button
                 onClick={onToggle}
                 aria-label={isExpanded ? 'Collapse day details' : 'Expand day details'}
@@ -205,21 +161,44 @@ export default function DayRow({
                 style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
               >
                 <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path
-                    d="M4 6l4 4 4-4"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                  <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
             </>
           )}
-            {day.platform}
-          </a>
         </div>
-      )}
+
+        {isExpanded && (
+          <div className="px-3 pb-3">
+            <div className={`border-l-2 pl-3 ${cfg.accentBorder} rounded-none`}>
+              <p className="mb-0.5 font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                1 hr — theory
+              </p>
+              <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-300">
+                {day.theory}
+              </p>
+
+              <p className="mb-0.5 mt-3 font-mono text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                1 hr — hands-on lab
+              </p>
+              <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-300">
+                {day.lab}
+              </p>
+            </div>
+
+            <a
+              href={day.platformUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 font-mono text-[11px] text-blue-600 hover:underline dark:text-blue-400"
+            >
+              <svg className="h-3 w-3 flex-shrink-0" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M7 1h4v4M11 1L5.5 6.5M4 2H2a1 1 0 00-1 1v7a1 1 0 001 1h7a1 1 0 001-1V8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {day.platform}
+            </a>
+          </div>
+        )}
       </motion.div>
     </div>
   );
