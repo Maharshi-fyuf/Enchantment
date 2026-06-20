@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:frontend\"",
     "dev:frontend": "vite",
-    "dev:api": "tsx scripts/serve-api.ts",
+    "dev:api": "tsx --env-file=.env scripts/serve-api.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",

@@ -148,13 +148,24 @@ export default function StudyPlanTracker() {
 
       {/* ── Day list ───────────────────────────────────────────────────── */}
       <section aria-label="Study days" className="flex flex-col gap-1.5">
-        {visibleDays.length === 0 && (
+        {isLoading && (
+          <div className="py-8 text-center text-sm font-mono text-gray-400 dark:text-gray-600">
+            CONNECTING TO NEON...
+          </div>
+        )}
+        {error && (
+          <div className="py-8 text-center text-sm font-mono text-red-500">
+            {error}
+          </div>
+        )}
+
+        {!isLoading && visibleDays.length === 0 && (
           <p className="py-8 text-center text-sm text-gray-400 dark:text-gray-600">
             No days in this pillar.
           </p>
         )}
 
-        {visibleDays.map((day) => {
+        {!isLoading && visibleDays.map((day) => {
           const isTarget = scrollTarget === day.day;
           return (
             <DayRow
@@ -165,7 +176,7 @@ export default function StudyPlanTracker() {
               onToggle={() => toggleExpanded(day.day)}
               onComplete={() => toggleComplete(day.day)}
               shouldScroll={isTarget}
-              onScrolled={isTarget ? clearScrollTarget : undefined}
+              onLogSession={(minutes) => logSession(day.day, day.pillar, minutes)}
             />
           );
         })}

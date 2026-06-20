@@ -38,56 +38,42 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { STUDY_DAYS } from '../data/studyPlan';
-
-const STORAGE_KEY = 'studyPlanProgress_v1';
+import { getStudyDays, toggleStudyDay, logStudySession } from '../lib/api';
 
 export function useStudyProgress() {
-  // ── Core state ────────────────────────────────────────────────────────────
-
-  /**
-   * completedDays: Set<number>
-   * Each number is a day.day value (1–30).
-   * Stored as an array in localStorage/your API, converted to Set on load.
-   */
-  const [completedDays, setCompletedDays] = useState(() => {
-    // ── PERSISTENCE LAYER: initial load ──────────────────────────────────
-    // Replace this block to load from your backend instead.
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
-    // ─────────────────────────────────────────────────────────────────────
-  });
-
-  /**
-   * expandedDays: Set<number>
-   * Tracks which accordion rows are open. Not persisted — resets on refresh.
-   */
+  const [completedDays, setCompletedDays] = useState(new Set());
   const [expandedDays, setExpandedDays] = useState(new Set());
-
-  /**
-   * activeFilter: number
-   * 0 = show all, 1–4 = show only that pillar.
-   */
   const [activeFilter, setActiveFilter] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // ── PERSISTENCE LAYER: save on change ────────────────────────────────────
-  // Replace this effect with your API call to save progress.
+  // Load from API on mount
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([...completedDays]));
-    } catch {
-      // localStorage unavailable (e.g. incognito with strict settings)
+    async function loadProgress() {
+      try {
+        setError(null);
+        const days = await getStudyDays();
+        const doneSet = new Set();
+        days.forEach(d => {
+          if (d.completed_at !== null) {
+            doneSet.add(d.day_number);
+          }
+        });
+        setCompletedDays(doneSet);
+      } catch (err) {
+        console.error('Failed to load study days:', err);
+        setError(err.message || 'Failed to connect to API');
+      } finally {
+        setIsLoading(false);
+      }
     }
-  }, [completedDays]);
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // ── Actions ───────────────────────────────────────────────────────────────
+    loadProgress();
+  }, []);
 
   /** Mark a day complete or incomplete. Toggles. */
-  const toggleComplete = useCallback((dayNumber) => {
+  const toggleComplete = useCallback(async (dayNumber) => {
+    // Optimistic update
+    const previous = new Set(completedDays);
     setCompletedDays((prev) => {
       const next = new Set(prev);
       if (next.has(dayNumber)) {
@@ -97,6 +83,23 @@ export function useStudyProgress() {
       }
       return next;
     });
+
+    try {
+      await toggleStudyDay(dayNumber);
+    } catch (err) {
+      console.error('Failed to toggle study day:', err);
+      // Rollback
+      setCompletedDays(previous);
+    }
+  }, [completedDays]);
+
+  /** Log a study session (fire-and-forget) */
+  const logSession = useCallback(async (dayNumber, pillar, durationMinutes) => {
+    try {
+      await logStudySession({ day_number: dayNumber, pillar, duration_minutes: durationMinutes });
+    } catch (err) {
+      console.error('Failed to log study session:', err);
+    }
   }, []);
 
   /** Open or close an accordion row. */
@@ -116,20 +119,16 @@ export function useStudyProgress() {
   const jumpToDay = useCallback((dayNumber, pillar) => {
     setActiveFilter(0); // show all so the row is visible
     setExpandedDays((prev) => new Set([...prev, dayNumber]));
-    // Caller should handle scrollIntoView — see DayTimeline.jsx
   }, []);
 
   /** Collapse all open rows. */
   const collapseAll = useCallback(() => setExpandedDays(new Set()), []);
-
-  // ── Derived / computed values ─────────────────────────────────────────────
 
   const progress = useMemo(() => {
     const total = STUDY_DAYS.length; // 30
     const completed = completedDays.size;
     const percentage = Math.round((completed / total) * 100);
 
-    // Per-pillar breakdown — useful for pillar progress bars
     const byPillar = {};
     for (let p = 1; p <= 4; p++) {
       const pillarDays = STUDY_DAYS.filter((d) => d.pillar === p);
@@ -140,24 +139,23 @@ export function useStudyProgress() {
     return { total, completed, percentage, byPillar };
   }, [completedDays]);
 
-  /** Days visible after applying the active pillar filter. */
   const visibleDays = useMemo(
     () => (activeFilter === 0 ? STUDY_DAYS : STUDY_DAYS.filter((d) => d.pillar === activeFilter)),
     [activeFilter]
   );
 
   return {
-    // State
     completedDays,
     expandedDays,
     activeFilter,
-    // Actions
+    isLoading,
+    error,
     toggleComplete,
     toggleExpanded,
     setActiveFilter,
     jumpToDay,
     collapseAll,
-    // Computed
+    logSession,
     progress,
     visibleDays,
   };
