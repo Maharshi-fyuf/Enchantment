@@ -129,10 +129,20 @@ export function getLocalDayType(): 'pull' | 'push' | 'legs' | 'rest' {
   return map[dayOfWeek];
 }
 
+/** Get local date string YYYY-MM-DD */
+export function getLocalDayString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /** Get today's workout day type and exercise list */
 export function getToday(): Promise<TodayResponse> {
   const dayType = getLocalDayType();
-  return request(`/api/today?day_type=${dayType}`);
+  const localDate = getLocalDayString();
+  return request(`/api/today?day_type=${dayType}&date=${localDate}`);
 }
 
 /** Start a new workout session */

@@ -8,7 +8,7 @@
 
 import { Hono } from 'hono';
 import { handle } from 'hono/vercel';
-import { neon } from '@neondatabase/serverless';
+import { neon, types } from '@neondatabase/serverless';
 import { z } from 'zod';
 
 // ── DB connection ──────────────────────────────────────────────────────────
@@ -17,6 +17,11 @@ const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable is required');
 }
+
+// Global type parsers to ensure NUMERIC (1700) and BIGINT (20) return as numbers
+types.setTypeParser(1700, (val) => parseFloat(val));
+types.setTypeParser(20, (val) => parseInt(val, 10));
+
 const sql = neon(DATABASE_URL);
 
 // ── Hono app ───────────────────────────────────────────────────────────────
@@ -61,20 +66,27 @@ const logStudySessionSchema = z.object({
 // ═══════════════════════════════════════════════════════════════════════════
 
 const dayTypeSchema = z.enum(['push', 'pull', 'legs', 'rest']);
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/); // YYYY-MM-DD
 
 /**
  * GET /api/today
  * Returns today's day_type and exercise list based on the client's local day_type.
  * Query param ?day_type=push|pull|legs|rest is required.
+ * Query param ?date=YYYY-MM-DD is required for proper active session resolution.
  */
 app.get('/today', async (c) => {
   const parsed = dayTypeSchema.safeParse(c.req.query('day_type'));
+  const parsedDate = dateSchema.safeParse(c.req.query('date'));
 
   if (!parsed.success) {
     return c.json({ error: 'Missing or invalid day_type query parameter', details: parsed.error.flatten() }, 400);
   }
+  if (!parsedDate.success) {
+    return c.json({ error: 'Missing or invalid date query parameter (YYYY-MM-DD required)', details: parsedDate.error.flatten() }, 400);
+  }
 
   const dayType = parsed.data;
+  const localDate = parsedDate.data;
 
   if (dayType === 'rest') {
     return c.json({ day_type: 'rest', exercises: [], active_session: null });
@@ -87,7 +99,7 @@ app.get('/today', async (c) => {
     ORDER BY sort_order ASC
   `;
 
-  // Check if there's an active (incomplete) session for today
+  // Check if there's an active (incomplete) session for today (using Asia/Kolkata timezone mapping)
   const activeSessions = await sql`
     SELECT ws.*, 
       COALESCE(
@@ -107,7 +119,7 @@ app.get('/today', async (c) => {
     LEFT JOIN set_logs sl ON sl.session_id = ws.id
     WHERE ws.day_type = ${dayType} 
       AND ws.completed_at IS NULL
-      AND ws.started_at >= current_date
+      AND (ws.started_at AT TIME ZONE 'Asia/Kolkata')::date = ${localDate}
     GROUP BY ws.id
     ORDER BY ws.started_at DESC
     LIMIT 1
