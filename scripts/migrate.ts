@@ -91,9 +91,24 @@ async function migrate() {
   `;
   console.log('  ✓ study_sessions');
 
+  // Reminders
+  await sql`
+    CREATE TABLE IF NOT EXISTS reminders (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      due_date DATE NOT NULL,
+      due_time TIME,
+      notes TEXT,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    )
+  `;
+  console.log('  ✓ reminders');
+
   // Indexes
   await sql`CREATE INDEX IF NOT EXISTS idx_set_logs_exercise ON set_logs(exercise_id, created_at)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_study_sessions_date ON study_sessions(logged_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_date, due_time)`;
   console.log('  ✓ indexes');
 
   console.log('\n✅ Migration complete.');

@@ -55,6 +55,16 @@ export interface StudyDay {
   completed_at: string | null;
 }
 
+export interface StudySessionLog {
+  id: string;
+  day_number: number;
+  day_title: string | null;
+  pillar: number;
+  duration_minutes: number;
+  notes: string | null;
+  logged_at: string;
+}
+
 export interface StudySession {
   id: string;
   day_number: number;
@@ -219,4 +229,51 @@ export function logStudySession(data: {
 /** Get study hours time series */
 export function getStudyHours(group: 'day' | 'week' = 'day'): Promise<StudyHoursDataPoint[]> {
   return request(`/api/study/hours?group=${group}`);
+}
+
+/** Get recent study sessions (joined with day title) */
+export function getRecentStudySessions(limit = 20): Promise<StudySessionLog[]> {
+  return request(`/api/study/sessions/recent?limit=${limit}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REMINDERS API
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface Reminder {
+  id: string;
+  title: string;
+  due_date: string;
+  due_time: string | null;
+  notes: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/** Create a new reminder */
+export function createReminder(data: {
+  title: string;
+  due_date: string;
+  due_time?: string | null;
+  notes?: string | null;
+}): Promise<Reminder> {
+  return request('/api/reminders', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/** Get all upcoming (incomplete) reminders */
+export function getUpcomingReminders(): Promise<Reminder[]> {
+  return request('/api/reminders/upcoming');
+}
+
+/** Toggle completion of a reminder */
+export function completeReminder(id: string): Promise<Reminder> {
+  return request(`/api/reminders/${id}/complete`, { method: 'PATCH' });
+}
+
+/** Permanently delete a reminder */
+export function deleteReminder(id: string): Promise<{ deleted: boolean }> {
+  return request(`/api/reminders/${id}`, { method: 'DELETE' });
 }

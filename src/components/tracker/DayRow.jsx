@@ -15,6 +15,13 @@ export default function DayRow({
   const rowRef = useRef(null);
   const controls = useAnimation();
   const [showPicker, setShowPicker] = useState(false);
+  const pickerTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (pickerTimeoutRef.current) clearTimeout(pickerTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (shouldScroll && rowRef.current) {
@@ -25,14 +32,9 @@ export default function DayRow({
   const handleToggleComplete = () => {
     if (!isCompleted) {
       setShowPicker(true);
-      setTimeout(() => {
-        setShowPicker((prev) => {
-          if (prev) {
-            onComplete();
-            return false;
-          }
-          return prev;
-        });
+      pickerTimeoutRef.current = setTimeout(() => {
+        setShowPicker(false);
+        onComplete();
       }, 5000);
     } else {
       onComplete(); // Toggling off
@@ -40,6 +42,10 @@ export default function DayRow({
   };
 
   const handleLogSession = (minutes) => {
+    if (pickerTimeoutRef.current) {
+      clearTimeout(pickerTimeoutRef.current);
+      pickerTimeoutRef.current = null;
+    }
     if (minutes > 0 && onLogSession) {
       onLogSession(minutes);
     }

@@ -3,10 +3,9 @@ import { AnimatePresence } from 'framer-motion';
 import NavBar from './components/NavBar';
 import Today from './pages/Today';
 import Progress from './pages/Progress';
+import History from './pages/History';
 import StudyPlanTracker from './components/tracker/StudyPlanTracker';
 
-// Placeholder for Phase 4 (History screen — not yet built)
-const HistoryPlaceholder = () => <div className="flex items-center justify-center h-[calc(100vh-100px)] text-neutral-500 font-mono">History: Coming soon</div>;
 
 function AppContent() {
   const location = useLocation();
@@ -20,7 +19,7 @@ function AppContent() {
             <Route path="/" element={<Today />} />
             <Route path="/progress" element={<Progress />} />
             <Route path="/study" element={<StudyPlanTracker />} />
-            <Route path="/history" element={<HistoryPlaceholder />} />
+            <Route path="/history" element={<History />} />
           </Routes>
         </AnimatePresence>
       </main>

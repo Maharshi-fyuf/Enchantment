@@ -61,6 +61,13 @@ const logStudySessionSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+const createReminderSchema = z.object({
+  title: z.string().min(1).max(200),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  due_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // WORKOUT ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -410,6 +417,119 @@ app.get('/study/hours', async (c) => {
   }
 
   return c.json(rows);
+});
+
+/**
+ * GET /api/study/sessions/recent
+ * Returns the last N study sessions joined with their day title.
+ * Raw ISO timestamps — no TZ casting, frontend formats with Intl.DateTimeFormat.
+ */
+app.get('/study/sessions/recent', async (c) => {
+  const limit = parseInt(c.req.query('limit') ?? '20');
+
+  const rows = await sql`
+    SELECT
+      ss.id,
+      ss.day_number,
+      sd.title AS day_title,
+      ss.pillar,
+      ss.duration_minutes,
+      ss.notes,
+      ss.logged_at
+    FROM study_sessions ss
+    LEFT JOIN study_days sd ON ss.day_number = sd.day_number
+    ORDER BY ss.logged_at DESC
+    LIMIT ${limit}
+  `;
+
+  return c.json(rows);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REMINDER ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/reminders
+ * Create a new reminder.
+ */
+app.post('/reminders', async (c) => {
+  const body = await c.req.json();
+  const parsed = createReminderSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid input', details: parsed.error.flatten() }, 400);
+  }
+
+  const { title, due_date, due_time, notes } = parsed.data;
+
+  const result = await sql`
+    INSERT INTO reminders (title, due_date, due_time, notes)
+    VALUES (${title}, ${due_date}, ${due_time ?? null}, ${notes ?? null})
+    RETURNING *
+  `;
+
+  return c.json(result[0], 201);
+});
+
+/**
+ * GET /api/reminders/upcoming
+ * List incomplete reminders, ordered by due_date then due_time.
+ */
+app.get('/reminders/upcoming', async (c) => {
+  const rows = await sql`
+    SELECT *
+    FROM reminders
+    WHERE completed_at IS NULL
+    ORDER BY due_date ASC, due_time ASC NULLS LAST
+  `;
+
+  return c.json(rows);
+});
+
+/**
+ * PATCH /api/reminders/:id/complete
+ * Toggle completed_at (null → now(), non-null → null).
+ */
+app.patch('/reminders/:id/complete', async (c) => {
+  const id = c.req.param('id');
+
+  const current = await sql`
+    SELECT completed_at FROM reminders WHERE id = ${id}
+  `;
+
+  if (current.length === 0) {
+    return c.json({ error: 'Reminder not found' }, 404);
+  }
+
+  const isCompleted = current[0].completed_at !== null;
+
+  const result = await sql`
+    UPDATE reminders
+    SET completed_at = ${isCompleted ? null : new Date().toISOString()}
+    WHERE id = ${id}
+    RETURNING *
+  `;
+
+  return c.json(result[0]);
+});
+
+/**
+ * DELETE /api/reminders/:id
+ * Permanently delete a reminder.
+ */
+app.delete('/reminders/:id', async (c) => {
+  const id = c.req.param('id');
+
+  const result = await sql`
+    DELETE FROM reminders WHERE id = ${id} RETURNING id
+  `;
+
+  if (result.length === 0) {
+    return c.json({ error: 'Reminder not found' }, 404);
+  }
+
+  return c.json({ deleted: true });
 });
 
 // ── Health check ───────────────────────────────────────────────────────────

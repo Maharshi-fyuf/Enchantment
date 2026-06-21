@@ -1,16 +1,32 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, Plus, Check } from 'lucide-react';
+import { Trash2, Plus, Check, Calendar, Clock, X } from 'lucide-react';
 import { 
   getToday, 
   startSession, 
   logSet, 
   deleteSet, 
   completeSession,
+  getRecentSessions,
+  getRecentStudySessions,
+  getUpcomingReminders,
+  createReminder,
+  completeReminder,
+  deleteReminder,
   type TodayResponse,
   type WorkoutSession,
-  type SetLog
+  type SetLog,
+  type Reminder
 } from '../lib/api';
+
+/** Returns true if the ISO timestamp falls on today in the browser's local timezone. */
+function isLocalToday(isoString: string): boolean {
+  const d = new Date(isoString);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear()
+      && d.getMonth() === now.getMonth()
+      && d.getDate() === now.getDate();
+}
 
 export default function Today() {
   const [data, setData] = useState<TodayResponse | null>(null);
@@ -19,8 +35,35 @@ export default function Today() {
   const [error, setError] = useState<string | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
 
+  // Today's completion state — silently fails if network is flaky
+  const [workoutDoneToday, setWorkoutDoneToday] = useState(false);
+  const [studyDoneToday, setStudyDoneToday] = useState(false);
+
+  // Reminders state
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
+
   useEffect(() => {
     loadToday();
+    // Fire-and-forget: fetch just enough to determine today's completion
+    Promise.all([
+      getRecentSessions(5).catch(() => []),
+      getRecentStudySessions(5).catch(() => []),
+    ]).then(([workouts, studySessions]) => {
+      setWorkoutDoneToday(
+        workouts.some((w) => w.completed_at !== null && isLocalToday(w.completed_at))
+      );
+      setStudyDoneToday(
+        studySessions.some((s) => isLocalToday(s.logged_at))
+      );
+    });
+    // Fetch upcoming reminders
+    getUpcomingReminders()
+      .then(setReminders)
+      .catch(() => {});
   }, []);
 
   async function loadToday() {
@@ -125,6 +168,75 @@ export default function Today() {
     }
   }
 
+  // ── Reminder handlers ────────────────────────────────────────────────────
+
+  async function handleAddReminder(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTitle.trim() || !newDate) return;
+
+    // Optimistic add
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Reminder = {
+      id: tempId,
+      title: newTitle.trim(),
+      due_date: newDate,
+      due_time: newTime || null,
+      notes: null,
+      completed_at: null,
+      created_at: new Date().toISOString(),
+    };
+    setReminders(prev => [...prev, optimistic].sort((a, b) => {
+      const cmp = a.due_date.localeCompare(b.due_date);
+      if (cmp !== 0) return cmp;
+      if (!a.due_time && !b.due_time) return 0;
+      if (!a.due_time) return 1;
+      if (!b.due_time) return -1;
+      return a.due_time.localeCompare(b.due_time);
+    }));
+    setNewTitle('');
+    setNewDate('');
+    setNewTime('');
+    setShowAddForm(false);
+
+    try {
+      const saved = await createReminder({
+        title: optimistic.title,
+        due_date: optimistic.due_date,
+        due_time: optimistic.due_time,
+      });
+      setReminders(prev => prev.map(r => r.id === tempId ? saved : r));
+    } catch (err) {
+      console.error('Failed to create reminder:', err);
+      setReminders(prev => prev.filter(r => r.id !== tempId));
+    }
+  }
+
+  async function handleCompleteReminder(id: string) {
+    // Optimistic remove from list (completing hides it from "upcoming")
+    const previous = reminders;
+    setReminders(prev => prev.filter(r => r.id !== id));
+
+    try {
+      await completeReminder(id);
+    } catch (err) {
+      console.error('Failed to complete reminder:', err);
+      setReminders(previous);
+    }
+  }
+
+  async function handleDeleteReminder(id: string) {
+    if (id.startsWith('temp-')) return;
+    const previous = reminders;
+    setReminders(prev => prev.filter(r => r.id !== id));
+
+    try {
+      await deleteReminder(id);
+    } catch (err) {
+      console.error('Failed to delete reminder:', err);
+      setReminders(previous);
+    }
+  }
+
   if (isLoading) {
     return <div className="flex h-[80vh] items-center justify-center text-[var(--color-text-muted)] font-mono text-sm tracking-widest">LOADING...</div>;
   }
@@ -156,7 +268,7 @@ export default function Today() {
   return (
     <div className="px-4 pt-12 pb-32 max-w-lg mx-auto">
       {/* Header */}
-      <header className="mb-10 text-center">
+      <header className="mb-6 text-center">
         <h1 className="text-3xl font-bold font-mono tracking-widest uppercase mb-2" style={{ color: `var(--color-${data.day_type})` }}>
           {data.day_type} Day
         </h1>
@@ -164,6 +276,305 @@ export default function Today() {
           {session ? 'Workout in progress' : 'Ready to dominate'}
         </p>
       </header>
+
+      {/* Today's Completion Row */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        gap: 10,
+        marginBottom: 28,
+      }}>
+        {([{ label: 'Workout', done: workoutDoneToday }, { label: 'Study', done: studyDoneToday }] as const).map(({ label, done }) => (
+          <div key={label} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '5px 12px',
+            borderRadius: 20,
+            border: `1px solid ${done ? 'var(--color-accent)' : 'var(--color-glass-border)'}`,
+            background: done ? 'var(--color-accent-muted)' : 'transparent',
+            transition: 'all 0.2s ease',
+          }}>
+            {/* Circle indicator */}
+            <div style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: done ? 'var(--color-accent)' : 'var(--color-text-muted)',
+              flexShrink: 0,
+              boxShadow: done ? '0 0 6px var(--color-accent)' : 'none',
+            }} />
+            <span style={{
+              fontFamily: 'monospace',
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: done ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            }}>
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Upcoming Reminders ────────────────────────────────────────── */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 12,
+        }}>
+          <h2 style={{
+            fontFamily: 'monospace',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.15em',
+            textTransform: 'uppercase',
+            color: 'var(--color-text-muted)',
+            margin: 0,
+          }}>Upcoming</h2>
+          <button
+            onClick={() => setShowAddForm(prev => !prev)}
+            style={{
+              background: 'none',
+              border: '1px solid var(--color-glass-border)',
+              borderRadius: 8,
+              padding: '3px 8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              color: 'var(--color-text-muted)',
+              fontFamily: 'monospace',
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {showAddForm ? <X size={12} /> : <Plus size={12} />}
+            {showAddForm ? 'Cancel' : 'Add'}
+          </button>
+        </div>
+
+        {/* Inline add-reminder form */}
+        <AnimatePresence>
+          {showAddForm && (
+            <motion.form
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              style={{ overflow: 'hidden', marginBottom: 12 }}
+              onSubmit={handleAddReminder}
+            >
+              <div style={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-glass-border)',
+                borderRadius: 12,
+                padding: 14,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}>
+                <input
+                  type="text"
+                  placeholder="Reminder title..."
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  required
+                  style={{
+                    background: 'var(--color-bg)',
+                    border: '1px solid var(--color-glass-border)',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    color: 'var(--color-text)',
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    outline: 'none',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Calendar size={14} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                    <input
+                      type="date"
+                      value={newDate}
+                      onChange={e => setNewDate(e.target.value)}
+                      required
+                      style={{
+                        background: 'var(--color-bg)',
+                        border: '1px solid var(--color-glass-border)',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                        color: 'var(--color-text)',
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        outline: 'none',
+                        flex: 1,
+                        colorScheme: 'dark',
+                      }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Clock size={14} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                    <input
+                      type="time"
+                      value={newTime}
+                      onChange={e => setNewTime(e.target.value)}
+                      style={{
+                        background: 'var(--color-bg)',
+                        border: '1px solid var(--color-glass-border)',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                        color: 'var(--color-text)',
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        outline: 'none',
+                        flex: 1,
+                        colorScheme: 'dark',
+                      }}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  style={{
+                    background: 'var(--color-accent)',
+                    color: 'var(--color-bg)',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '10px 0',
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: '0.15em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                  }}
+                >Save</button>
+              </div>
+            </motion.form>
+          )}
+        </AnimatePresence>
+
+        {/* Reminder list */}
+        {reminders.length === 0 && !showAddForm ? (
+          <p style={{
+            fontFamily: 'monospace',
+            fontSize: 11,
+            color: 'var(--color-text-muted)',
+            textAlign: 'center',
+            opacity: 0.6,
+            padding: '8px 0',
+          }}>No upcoming reminders</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <AnimatePresence>
+              {reminders.map(r => (
+                <motion.div
+                  key={r.id}
+                  layout
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -40 }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-glass-border)',
+                    borderRadius: 10,
+                    padding: '10px 12px',
+                  }}
+                >
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => handleCompleteReminder(r.id)}
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 6,
+                      border: '1.5px solid var(--color-glass-border)',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0,
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-accent)';
+                      (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-accent-muted)';
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-glass-border)';
+                      (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                    }}
+                  >
+                    <Check size={12} style={{ color: 'var(--color-accent)', opacity: 0.4 }} />
+                  </button>
+
+                  {/* Content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: 'var(--color-text)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>{r.title}</div>
+                    <div style={{
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                      color: 'var(--color-text-muted)',
+                      marginTop: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}>
+                      <Calendar size={10} />
+                      <span>{r.due_date}</span>
+                      {r.due_time && (
+                        <>
+                          <Clock size={10} />
+                          <span>{r.due_time.slice(0, 5)}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => handleDeleteReminder(r.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 4,
+                      color: 'var(--color-text-muted)',
+                      opacity: 0.4,
+                      transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.4'; }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </div>
 
       {/* Start Button */}
       {!session && (
