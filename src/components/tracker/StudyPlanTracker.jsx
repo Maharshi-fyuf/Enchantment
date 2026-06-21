@@ -33,10 +33,13 @@ export default function StudyPlanTracker() {
     completedDays,
     expandedDays,
     activeFilter,
+    isLoading,
+    error,
     toggleComplete,
     toggleExpanded,
     setActiveFilter,
     collapseAll,
+    logSession,
     progress,
     visibleDays,
   } = useStudyProgress();
