@@ -2,10 +2,10 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import { AnimatePresence } from 'framer-motion';
 import NavBar from './components/NavBar';
 import Today from './pages/Today';
+import Progress from './pages/Progress';
 import StudyPlanTracker from './components/tracker/StudyPlanTracker';
 
-// Placeholders for Phase 4
-const ProgressPlaceholder = () => <div className="flex items-center justify-center h-[calc(100vh-100px)] text-neutral-500 font-mono">Progress: Coming soon</div>;
+// Placeholder for Phase 4 (History screen — not yet built)
 const HistoryPlaceholder = () => <div className="flex items-center justify-center h-[calc(100vh-100px)] text-neutral-500 font-mono">History: Coming soon</div>;
 
 function AppContent() {
@@ -18,7 +18,7 @@ function AppContent() {
         <AnimatePresence mode="wait">
           <Routes location={location} key={location.pathname}>
             <Route path="/" element={<Today />} />
-            <Route path="/progress" element={<ProgressPlaceholder />} />
+            <Route path="/progress" element={<Progress />} />
             <Route path="/study" element={<StudyPlanTracker />} />
             <Route path="/history" element={<HistoryPlaceholder />} />
           </Routes>

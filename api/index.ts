@@ -234,7 +234,7 @@ app.get('/exercises/:slug/history', async (c) => {
 
   const rows = await sql`
     SELECT
-      ws.started_at::date AS date,
+      (ws.started_at AT TIME ZONE 'Asia/Kolkata')::date::text AS date,
       MAX(sl.weight_kg * (1 + sl.reps::decimal / 30)) AS e1rm
     FROM set_logs sl
     JOIN exercises e ON sl.exercise_id = e.id
@@ -242,8 +242,8 @@ app.get('/exercises/:slug/history', async (c) => {
     WHERE e.slug = ${slug}
       AND sl.weight_kg > 0
       AND sl.reps > 0
-    GROUP BY ws.started_at::date
-    ORDER BY ws.started_at::date ASC
+    GROUP BY (ws.started_at AT TIME ZONE 'Asia/Kolkata')::date
+    ORDER BY (ws.started_at AT TIME ZONE 'Asia/Kolkata')::date ASC
   `;
 
   return c.json({
@@ -390,7 +390,7 @@ app.get('/study/hours', async (c) => {
   if (groupBy === 'week') {
     rows = await sql`
       SELECT
-        date_trunc('week', logged_at)::date AS period,
+        date_trunc('week', logged_at AT TIME ZONE 'Asia/Kolkata')::date::text AS period,
         pillar,
         SUM(duration_minutes) AS total_minutes
       FROM study_sessions
@@ -400,7 +400,7 @@ app.get('/study/hours', async (c) => {
   } else {
     rows = await sql`
       SELECT
-        logged_at::date AS period,
+        (logged_at AT TIME ZONE 'Asia/Kolkata')::date::text AS period,
         pillar,
         SUM(duration_minutes) AS total_minutes
       FROM study_sessions
