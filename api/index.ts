@@ -11,18 +11,27 @@ import { handle } from 'hono/vercel';
 import { neon, types } from '@neondatabase/serverless';
 import { z } from 'zod';
 
-// ── DB connection ──────────────────────────────────────────────────────────
-
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is required');
-}
+// ── DB connection (lazy – avoids crash at module load if env var is missing) ─
 
 // Global type parsers to ensure NUMERIC (1700) and BIGINT (20) return as numbers
 types.setTypeParser(1700, (val) => parseFloat(val));
 types.setTypeParser(20, (val) => parseInt(val, 10));
 
-const sql = neon(DATABASE_URL);
+let _sql: ReturnType<typeof neon> | null = null;
+
+function sql(strings: TemplateStringsArray, ...values: any[]) {
+  if (!_sql) {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      throw new Error(
+        'DATABASE_URL environment variable is not set. ' +
+        'Add it in Vercel Dashboard → Settings → Environment Variables.'
+      );
+    }
+    _sql = neon(url);
+  }
+  return _sql(strings, ...values);
+}
 
 // ── Hono app ───────────────────────────────────────────────────────────────
 
@@ -535,8 +544,15 @@ app.delete('/reminders/:id', async (c) => {
 // ── Health check ───────────────────────────────────────────────────────────
 
 app.get('/health', async (c) => {
-  const result = await sql`SELECT 1 as ok`;
-  return c.json({ status: 'ok', db: result[0].ok === 1 });
+  try {
+    const result = await sql`SELECT 1 as ok`;
+    return c.json({ status: 'ok', db: result[0].ok === 1 });
+  } catch (err: any) {
+    return c.json({
+      status: 'error',
+      message: err.message || 'Database connection failed',
+    }, 500);
+  }
 });
 
 // ── Export for Vercel ──────────────────────────────────────────────────────
